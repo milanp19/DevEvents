@@ -34,29 +34,19 @@ const BookingSchema = new Schema<IBooking>(
 // Create index on eventId for faster queries
 BookingSchema.index({ eventId: 1 });
 
-/**
- * Pre-save hook to validate that the referenced event exists
- * Prevents orphaned bookings by checking event existence before saving
- */
-BookingSchema.pre('save', async function (next) {
-  // Only validate eventId if it's new or modified
-  if (this.isNew || this.isModified('eventId')) {
-    try {
-      // Import Event model to check existence
-      const Event = mongoose.models.Event || (await import('./event.model')).default;
-      
-      const eventExists = await Event.exists({ _id: this.eventId });
-      
-      if (!eventExists) {
-        return next(new Error('Referenced event does not exist'));
-      }
-    } catch (error) {
-      return next(new Error('Failed to validate event reference'));
-    }
-  }
+// Compound unique index to enforce one booking per user per event
+// NOTE: Before deploying, ensure existing duplicates are cleaned up
+BookingSchema.index({ eventId: 1, email: 1 }, { unique: true });
 
-  next();
-});
+/**
+ * NOTE: Event existence validation should be performed in the service layer
+ * before calling Booking.create() to avoid performance overhead and race conditions.
+ * 
+ * Example service layer validation:
+ * const event = await Event.findById(eventId);
+ * if (!event) throw new Error('Event not found');
+ * await Booking.create({ eventId, email });
+ */
 
 // Prevent model recompilation in development
 const Booking: Model<IBooking> =

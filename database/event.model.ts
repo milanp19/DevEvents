@@ -26,6 +26,7 @@ const EventSchema = new Schema<IEvent>(
       type: String,
       required: [true, 'Title is required'],
       trim: true,
+      maxlength: [100, 'Title cannot exceed 100 characters']
     },
     slug: {
       type: String,
@@ -37,6 +38,7 @@ const EventSchema = new Schema<IEvent>(
       type: String,
       required: [true, 'Description is required'],
       trim: true,
+      maxlength: [1000, 'Description cannot exceed 1000 characters']
     },
     overview: {
       type: String,
@@ -110,19 +112,42 @@ EventSchema.index({ slug: 1 });
 /**
  * Pre-save hook to generate slug, normalize date and time
  * - Only regenerates slug if title has changed
+ * - Handles slug conflicts by appending numeric suffix
  * - Normalizes date to ISO format (YYYY-MM-DD)
  * - Normalizes time to 24-hour format (HH:MM)
  */
-EventSchema.pre('save', function (next) {
+EventSchema.pre('save', async function (next) {
   // Generate slug from title if title is modified or document is new
   if (this.isModified('title')) {
-    this.slug = this.title
+    const baseSlug = this.title
       .toLowerCase()
       .trim()
       .replace(/[^\w\s-]/g, '') // Remove special characters
       .replace(/\s+/g, '-') // Replace spaces with hyphens
       .replace(/--+/g, '-') // Replace multiple hyphens with single hyphen
       .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+
+    // Check for slug conflicts and append numeric suffix if needed
+    let slug = baseSlug;
+    let counter = 1;
+    
+    while (true) {
+      // Check if slug exists (excluding current document)
+      const existingEvent = await mongoose.models.Event.findOne({
+        slug,
+        _id: { $ne: this._id },
+      });
+
+      if (!existingEvent) {
+        // Slug is unique, use it
+        this.slug = slug;
+        break;
+      }
+
+      // Slug exists, try with numeric suffix
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
   }
 
   // Normalize date to ISO format (YYYY-MM-DD)
